@@ -1,0 +1,78 @@
+spring:
+  application:
+    name: rtt-api
+  config:
+    import: "optional:file:.env[.properties]"
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        default_batch_fetch_size: 20
+  flyway:
+    enabled: true
+    clean-disabled: true
+    locations: "classpath:db/migration"
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5433/rtt}
+    username: ${SPRING_DATASOURCE_USERNAME:rtt_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:rtt_password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 20000
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+
+server:
+  port: 8080
+  error:
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info"
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+
+# Application Configuration Properties (AppProps)
+app:
+  jwt:
+    access-secret: ${JWT_ACCESS_SECRET:dev-access-token-secret-key-that-is-at-least-256-bits-long-for-rtt-app}
+    refresh-secret: ${JWT_REFRESH_SECRET:dev-refresh-token-secret-key-that-is-at-least-256-bits-long-for-rtt-app}
+    access-ttl-minutes: 15
+    refresh-ttl-days: 14
+  admin:
+    email: ${ADMIN_EMAIL:admin@apex.in}
+    password: ${ADMIN_PASSWORD:bunny@123}
+  demo:
+    email: ${DEMO_EMAIL:demo@apex.in}
+    password: ${DEMO_PASSWORD:demo@123}
+    cred-ttl-hours: ${DEMO_CRED_TTL_HOURS:24}
+  support-email: ${SUPPORT_EMAIL:support@apex.in}
+  gemini:
+    api-key: ${GEMINI_API_KEY:}
+  whisper:
+    url: ${WHISPER_URL:http://127.0.0.1:8001}
+  engine: ${ENGINE:mock}
+  push: ${PUSH:noop}
+  seed-on-startup: false
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000}
+    allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PUT,PATCH,DELETE,OPTIONS}

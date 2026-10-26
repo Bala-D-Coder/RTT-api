@@ -22,8 +22,14 @@ public record AppProps(
         @Valid @NotNull CorsProps cors,
         @NotBlank @Pattern(regexp = "gemini_live|whisper_local|mock") String engine,
         @NotBlank @Pattern(regexp = "firebase|noop") String push,
-        boolean seedOnStartup
+        boolean seedOnStartup,
+        boolean seedAccounts,
+        SheetsProps sheets
 ) {
+    public record SheetsProps(
+            String webhookUrl
+    ) {}
+
     public record JwtProps(
             @NotBlank String accessSecret,
             @NotBlank String refreshSecret,

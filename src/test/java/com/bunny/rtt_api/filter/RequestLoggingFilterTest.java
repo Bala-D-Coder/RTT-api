@@ -1,6 +1,5 @@
 package com.bunny.rtt_api.filter;
 
-import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
@@ -46,7 +45,8 @@ class RequestLoggingFilterTest {
         when(request.getMethod()).thenReturn("POST");
         when(request.getRequestURI()).thenReturn("/ws/transcribe");
         when(request.getQueryString()).thenReturn("key=AIzaSyFakeSecretKey12345&ticket=secretTicketJwtValue");
-        when(request.getHeader("Authorization")).thenReturn("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.sensitivePayload");
+        when(request.getHeader("Authorization"))
+                .thenReturn("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.sensitivePayload");
         when(request.getHeader("Cookie")).thenReturn("sessionId=xyz; refreshToken=secretRefreshToken123");
         when(response.getStatus()).thenReturn(200);
 

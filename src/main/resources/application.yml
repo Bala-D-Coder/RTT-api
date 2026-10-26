@@ -16,9 +16,9 @@ spring:
     clean-disabled: true
     locations: "classpath:db/migration"
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5433/rtt}
-    username: ${SPRING_DATASOURCE_USERNAME:rtt_user}
-    password: ${SPRING_DATASOURCE_PASSWORD:rtt_password}
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -54,25 +54,28 @@ springdoc:
 # Application Configuration Properties (AppProps)
 app:
   jwt:
-    access-secret: ${JWT_ACCESS_SECRET:dev-access-token-secret-key-that-is-at-least-256-bits-long-for-rtt-app}
-    refresh-secret: ${JWT_REFRESH_SECRET:dev-refresh-token-secret-key-that-is-at-least-256-bits-long-for-rtt-app}
+    access-secret: ${JWT_ACCESS_SECRET}
+    refresh-secret: ${JWT_REFRESH_SECRET}
     access-ttl-minutes: 15
     refresh-ttl-days: 14
   admin:
-    email: ${ADMIN_EMAIL:admin@apex.in}
-    password: ${ADMIN_PASSWORD:bunny@123}
+    email: ${ADMIN_EMAIL}
+    password: ${ADMIN_PASSWORD}
   demo:
-    email: ${DEMO_EMAIL:demo@apex.in}
-    password: ${DEMO_PASSWORD:demo@123}
-    cred-ttl-hours: ${DEMO_CRED_TTL_HOURS:24}
-  support-email: ${SUPPORT_EMAIL:support@apex.in}
+    email: ${DEMO_EMAIL}
+    password: ${DEMO_PASSWORD}
+    cred-ttl-hours: ${DEMO_CRED_TTL_HOURS}
+  support-email: ${SUPPORT_EMAIL}
   gemini:
     api-key: ${GEMINI_API_KEY:}
   whisper:
     url: ${WHISPER_URL:http://127.0.0.1:8001}
-  engine: ${ENGINE:mock}
-  push: ${PUSH:noop}
-  seed-on-startup: false
+  engine: ${ENGINE}
+  push: ${PUSH}
+  seed-on-startup: ${SEED_ON_STARTUP}
+  seed-accounts: ${SEED_ACCOUNTS}
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000}
-    allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PUT,PATCH,DELETE,OPTIONS}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+    allowed-methods: ${CORS_ALLOWED_METHODS}
+  sheets:
+    webhook-url: ${GOOGLE_SHEETS_WEBHOOK_URL}

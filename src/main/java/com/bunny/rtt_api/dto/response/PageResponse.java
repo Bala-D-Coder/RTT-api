@@ -1,0 +1,10 @@
+package com.bunny.rtt_api.dto.response;
+
+import java.util.List;
+
+public record PageResponse<T>(
+        List<T> items,
+        int page,
+        int pageSize,
+        long total
+) {}

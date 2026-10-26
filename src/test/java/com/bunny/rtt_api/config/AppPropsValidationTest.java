@@ -32,7 +32,9 @@ class AppPropsValidationTest {
                 new AppProps.CorsProps(List.of(), List.of()), // Empty CORS origins/methods
                 "invalid_engine", // Invalid pattern
                 "invalid_push",   // Invalid pattern
-                false
+                false,
+                false,
+                new AppProps.SheetsProps("")
         );
 
         var violations = validator.validate(invalidProps);
@@ -65,7 +67,9 @@ class AppPropsValidationTest {
                 new AppProps.CorsProps(List.of("http://localhost:5173"), List.of("GET", "POST")),
                 "gemini_live",
                 "firebase",
-                true
+                true,
+                false,
+                new AppProps.SheetsProps("https://script.google.com/test")
         );
 
         var violations = validator.validate(validProps);

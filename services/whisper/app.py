@@ -6,7 +6,7 @@ import soundfile as sf
 from fastapi import FastAPI, Request, Response, HTTPException, Query
 from faster_whisper import WhisperModel
 
-MODEL_NAME = os.getenv("WHISPER_MODEL", "small")
+MODEL_NAME = os.getenv("WHISPER_MODEL", "base")
 COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
 CPU_THREADS = int(os.getenv("WHISPER_CPU_THREADS", "8"))
 DEVICE = "cpu"
@@ -58,14 +58,20 @@ async def transcribe(
 
     duration = len(audio_data) / sample_rate
 
-    # Transcribe with beam_size=1 and VAD filter for real-time responsiveness
+    # Transcribe with beam_size=1, temperature=0.0, and tuned VAD for real-time fast speech
     segments, info = model.transcribe(
         audio_data,
         language=language,
         initial_prompt=prompt,
         beam_size=1,
+        temperature=0.0,
+        condition_on_previous_text=False,
         vad_filter=True,
-        word_timestamps=True
+        vad_parameters=dict(
+            min_silence_duration_ms=250,
+            speech_pad_ms=100
+        ),
+        word_timestamps=False
     )
 
     results = []

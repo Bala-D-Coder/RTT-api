@@ -38,6 +38,9 @@ jobs:
           path: target/openapi.json
           if-no-files-found: warn
 
+      - name: Verify Docker build
+        run: docker build -t rtt-api:ci .
+
       - name: Secret Scan (Grep for leaked keys or unhashed credentials)
         run: |
           echo "Scanning tracked files for accidentally committed secrets..."

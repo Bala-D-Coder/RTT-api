@@ -28,7 +28,7 @@ public class TranscribeWebSocketHandler extends AbstractWebSocketHandler {
 
     private static final Logger log = LoggerFactory.getLogger(TranscribeWebSocketHandler.class);
 
-    public static final int MAX_FRAME_SIZE = 3200; // 100 ms of PCM16 at 16 kHz mono
+    public static final int MAX_FRAME_SIZE = 8192; // Up to 256 ms of PCM16 at 16 kHz mono (WebAudio buffer friendly)
     public static final long MAX_SESSION_DURATION_MS = 10 * 60 * 1000L; // 10 minutes
     public static final int MAX_CONCURRENT_SESSIONS = 50;
 
@@ -42,7 +42,9 @@ public class TranscribeWebSocketHandler extends AbstractWebSocketHandler {
     private static class SessionContext {
         final String sessionId;
         final long createdAt;
+        long frameCount = 0;
         LiveEngine engine;
+        final java.io.ByteArrayOutputStream audioBuffer = new java.io.ByteArrayOutputStream();
 
         SessionContext(String sessionId, String userId) {
             this.sessionId = sessionId;
@@ -129,11 +131,13 @@ public class TranscribeWebSocketHandler extends AbstractWebSocketHandler {
             engine.open(new EngineSession() {
                 @Override
                 public void onPartial(String text, String source, long ts) {
+                    log.info("Session {} [partial]: {}", context.sessionId, text);
                     sendEvent(session, WsTranscribeEvent.partial(text, source, ts));
                 }
 
                 @Override
                 public void onFinal(int seq, String text, long startMs, long endMs, Double confidence, String lang) {
+                    log.info("Session {} [final seq={}]: {}", context.sessionId, seq, text);
                     // If noteId is present and mode is append/create, persist note block with
                     // source='dictation' (B18)
                     if (startMessage.noteId() != null && !startMessage.noteId().isBlank()) {
@@ -186,15 +190,27 @@ public class TranscribeWebSocketHandler extends AbstractWebSocketHandler {
         ByteBuffer buffer = message.getPayload();
         int frameSize = buffer.remaining();
 
-        // Enforce max frame size limit (3200 bytes)
+        // Enforce max frame size limit (8192 bytes)
         if (frameSize > MAX_FRAME_SIZE) {
             log.warn("Received oversize audio frame ({} bytes > {} max)", frameSize, MAX_FRAME_SIZE);
-            sendEvent(session, WsTranscribeEvent.error("bad_frame", "Audio frame exceeds 3200 bytes limit", false));
+            sendEvent(session, WsTranscribeEvent.error("bad_frame", "Audio frame exceeds " + MAX_FRAME_SIZE + " bytes limit", false));
             return;
         }
 
+        context.frameCount++;
+        if (context.frameCount == 1 || context.frameCount % 40 == 0) {
+            log.info("Session {} received audio frame #{} ({} bytes)", context.sessionId, context.frameCount, frameSize);
+        }
+
+        byte[] frameBytes = new byte[frameSize];
+        buffer.get(frameBytes);
+        try {
+            context.audioBuffer.write(frameBytes);
+        } catch (Exception ignored) {
+        }
+
         if (context.engine != null) {
-            context.engine.sendAudio(buffer);
+            context.engine.sendAudio(ByteBuffer.wrap(frameBytes));
         }
     }
 
@@ -203,14 +219,68 @@ public class TranscribeWebSocketHandler extends AbstractWebSocketHandler {
         SessionContext context = activeSessions.remove(session.getId());
         if (context != null) {
             log.info("WebSocket transcribe session closed: sessionId={}, status={}", context.sessionId, status);
+            if (context.audioBuffer.size() > 0) {
+                saveSessionWav(context.sessionId, context.audioBuffer.toByteArray());
+            }
             if (context.engine != null) {
                 try {
+                    context.engine.flush();
                     context.engine.close();
                 } catch (Exception e) {
                     log.error("Error closing engine for session {}", context.sessionId, e);
                 }
             }
         }
+    }
+
+    private void saveSessionWav(String sessionId, byte[] pcmData) {
+        try {
+            java.io.File targetDir = new java.io.File("target");
+            if (!targetDir.exists()) targetDir.mkdirs();
+            java.io.File wavFile = new java.io.File(targetDir, "last_mic_session.wav");
+            byte[] header = buildWavHeader(pcmData.length, 16000, 1, 16);
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(wavFile)) {
+                fos.write(header);
+                fos.write(pcmData);
+            }
+            log.info("Diagnostic audio saved to {} ({} audio bytes, {} ms of 16kHz speech)",
+                    wavFile.getAbsolutePath(), pcmData.length, (pcmData.length / 32));
+        } catch (Exception e) {
+            log.warn("Failed to save diagnostic session WAV: {}", e.getMessage());
+        }
+    }
+
+    private static byte[] buildWavHeader(int pcmDataLength, int sampleRate, int channels, int bitsPerSample) {
+        int byteRate = sampleRate * channels * (bitsPerSample / 8);
+        int blockAlign = channels * (bitsPerSample / 8);
+        int totalDataLen = pcmDataLength + 36;
+        byte[] header = new byte[44];
+        header[0] = 'R'; header[1] = 'I'; header[2] = 'F'; header[3] = 'F';
+        header[4] = (byte) (totalDataLen & 0xff);
+        header[5] = (byte) ((totalDataLen >> 8) & 0xff);
+        header[6] = (byte) ((totalDataLen >> 16) & 0xff);
+        header[7] = (byte) ((totalDataLen >> 24) & 0xff);
+        header[8] = 'W'; header[9] = 'A'; header[10] = 'V'; header[11] = 'E';
+        header[12] = 'f'; header[13] = 'm'; header[14] = 't'; header[15] = ' ';
+        header[16] = 16; header[17] = 0; header[18] = 0; header[19] = 0;
+        header[20] = 1; header[21] = 0;
+        header[22] = (byte) channels; header[23] = 0;
+        header[24] = (byte) (sampleRate & 0xff);
+        header[25] = (byte) ((sampleRate >> 8) & 0xff);
+        header[26] = (byte) ((sampleRate >> 16) & 0xff);
+        header[27] = (byte) ((sampleRate >> 24) & 0xff);
+        header[28] = (byte) (byteRate & 0xff);
+        header[29] = (byte) ((byteRate >> 8) & 0xff);
+        header[30] = (byte) ((byteRate >> 16) & 0xff);
+        header[31] = (byte) ((byteRate >> 24) & 0xff);
+        header[32] = (byte) blockAlign; header[33] = 0;
+        header[34] = (byte) bitsPerSample; header[35] = 0;
+        header[36] = 'd'; header[37] = 'a'; header[38] = 't'; header[39] = 'a';
+        header[40] = (byte) (pcmDataLength & 0xff);
+        header[41] = (byte) ((pcmDataLength >> 8) & 0xff);
+        header[42] = (byte) ((pcmDataLength >> 16) & 0xff);
+        header[43] = (byte) ((pcmDataLength >> 24) & 0xff);
+        return header;
     }
 
     private synchronized void sendEvent(WebSocketSession session, WsTranscribeEvent event) {
@@ -220,6 +290,9 @@ public class TranscribeWebSocketHandler extends AbstractWebSocketHandler {
 
         try {
             String json = objectMapper.writeValueAsString(event);
+            if (!"pong".equals(event.type())) {
+                log.info("[BACKEND -> UI] Sending event: type={}, text='{}'", event.type(), event.text() != null ? event.text() : "");
+            }
             session.sendMessage(new TextMessage(json));
         } catch (Exception e) {
             log.debug("Failed to send WebSocket message (session may be closed): {}", e.getMessage());

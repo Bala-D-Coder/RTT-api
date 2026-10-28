@@ -49,7 +49,8 @@ public record AppProps(
     ) {}
 
     public record GeminiProps(
-            String apiKey
+            String apiKey,
+            String model
     ) {}
 
     public record WhisperProps(

@@ -28,6 +28,7 @@ def healthz():
     }
 
 @app.post("/transcribe")
+@app.post("/asr")
 async def transcribe(
     request: Request,
     sample_rate: int = Query(16000, description="Sample rate in Hz"),

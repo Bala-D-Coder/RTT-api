@@ -22,6 +22,7 @@ public class GeminiLiveEngine implements LiveEngine {
     private EngineSession session;
     private final AtomicInteger sequence = new AtomicInteger(1);
     private final StringBuilder segmentBuffer = new StringBuilder();
+    private volatile String lastInterimText = null;
     private long segmentStartMs = 0;
 
     public GeminiLiveEngine(AppProps appProps, ObjectMapper objectMapper) {
@@ -34,12 +35,32 @@ public class GeminiLiveEngine implements LiveEngine {
         this.session = s;
         this.sequence.set(1);
         this.segmentBuffer.setLength(0);
+        this.lastInterimText = null;
         this.segmentStartMs = System.currentTimeMillis();
 
         String apiKey = appProps.gemini() != null ? appProps.gemini().apiKey() : null;
-        this.client = new GeminiLiveClient(apiKey, objectMapper);
+        String model = appProps.gemini() != null ? appProps.gemini().model() : null;
+        this.client = new GeminiLiveClient(apiKey, model, objectMapper);
 
         client.connect(new GeminiLiveClient.Listener() {
+            @Override
+            public void onInterim(String text) {
+                lastInterimText = text;
+                if (session != null) {
+                    session.onPartial(text, "gemini", System.currentTimeMillis());
+                }
+            }
+
+            @Override
+            public void onFinalSegment(String text) {
+                lastInterimText = null;
+                if (session != null && !text.isBlank()) {
+                    long now = System.currentTimeMillis();
+                    session.onFinal(sequence.getAndIncrement(), text, segmentStartMs, now, 0.98, "en");
+                    segmentStartMs = now;
+                }
+            }
+
             @Override
             public void onTextDelta(String text) {
                 segmentBuffer.append(text);
@@ -72,6 +93,17 @@ public class GeminiLiveEngine implements LiveEngine {
 
     @Override
     public void flush() {
+        if (client != null) {
+            client.flush();
+        }
+        if (lastInterimText != null && !lastInterimText.isBlank() && session != null) {
+            long now = System.currentTimeMillis();
+            long startMs = segmentStartMs;
+            String text = lastInterimText.trim();
+            lastInterimText = null;
+            segmentStartMs = now;
+            session.onFinal(sequence.getAndIncrement(), text, startMs, now, 0.98, "en");
+        }
         if (segmentBuffer.length() > 0 && session != null) {
             long now = System.currentTimeMillis();
             long startMs = segmentStartMs;
@@ -93,6 +125,7 @@ public class GeminiLiveEngine implements LiveEngine {
 
     @Override
     public void close() {
+        flush();
         if (client != null) {
             client.close();
             client = null;

@@ -45,6 +45,8 @@ Full measurement report and benchmark methodology are documented in [`Docs/SPIKE
 | **Whisper Local** (`faster-whisper-small` / `base`) | Local Python sidecar (`services/whisper`) | **100% Free ($0)**, runs completely offline on host CPU. | 0 API quota, no rate limits. | **Fallback engine** (when offline or key not provided). |
 | **Mock Engine** | In-process timer | **100% Free ($0)** | 0 API quota, 0 network. | **CI / Automated E2E testing**. |
 
+> **Measured 2026-10-28:** Gemini Live text transcription does not work with the current key. `gemini-3.5-transcribe-live` completes `setup`, runs VAD, and returns empty `serverContent` (0 output tokens); every other available Live model rejects `responseModalities:["TEXT"]` with close 1007. The UI now defaults to browser Web Speech. Full evidence: [`Docs/SPIKE-RESULTS.md`](../Docs/SPIKE-RESULTS.md) §5.
+
 ### 2. Measured Fallback RTF on 16-Thread i5 CPU (int8, 8 threads)
 
 On the host machine (12th Gen Intel Core i5-12500H):

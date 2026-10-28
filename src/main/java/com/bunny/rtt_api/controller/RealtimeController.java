@@ -42,7 +42,8 @@ public class RealtimeController {
                     }
                 })
                 .or(() -> SecurityUtils.getCurrentUserEmail().flatMap(userRepository::findByEmail))
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND, HttpStatus.UNAUTHORIZED, "User account not found"));
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND, HttpStatus.UNAUTHORIZED,
+                        "User account not found"));
 
         RealtimeTicketResponse response = ticketService.createTicket(user);
         return ResponseEntity.ok(response);

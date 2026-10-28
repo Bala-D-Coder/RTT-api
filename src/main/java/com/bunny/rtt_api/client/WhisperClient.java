@@ -32,7 +32,7 @@ public class WhisperClient {
     public WhisperResponse transcribe(byte[] pcm16Bytes) {
         try {
             String responseBody = restClient.post()
-                    .uri("/asr")
+                    .uri("/transcribe")
                     .contentType(MediaType.APPLICATION_OCTET_STREAM)
                     .body(pcm16Bytes)
                     .retrieve()

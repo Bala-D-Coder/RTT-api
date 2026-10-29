@@ -335,6 +335,8 @@ class NoteAndTagIntegrationTest extends IntegrationTestBase {
                                 NoteResponse.class);
                 Instant firstDeletedAt = trashedNote.deletedAt();
                 Instant firstPurgeAt = trashedNote.purgeAt();
+                // Bin retention window is 7 days
+                assertThat(ChronoUnit.DAYS.between(firstDeletedAt, firstPurgeAt)).isEqualTo(7);
 
                 // 3. Double-trash idempotency: purgeAt must not jump forward
                 MvcResult trashRes2 = mockMvc.perform(delete("/api/v1/notes/" + note.id())

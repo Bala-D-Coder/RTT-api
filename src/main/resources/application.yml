@@ -29,7 +29,7 @@ spring:
       fail-on-unknown-properties: true
 
 server:
-  port: 8080
+  port: ${PORT}
   error:
     include-message: never
 
@@ -68,8 +68,9 @@ app:
   support-email: ${SUPPORT_EMAIL}
   gemini:
     api-key: ${GEMINI_API_KEY:}
+    model: ${GEMINI_MODEL}
   whisper:
-    url: ${WHISPER_URL:http://127.0.0.1:8001}
+    url: ${WHISPER_URL}
   engine: ${ENGINE}
   push: ${PUSH}
   seed-on-startup: ${SEED_ON_STARTUP}

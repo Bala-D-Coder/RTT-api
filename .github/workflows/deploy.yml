@@ -1,0 +1,329 @@
+name: Build & Deploy RTT API to Render
+
+on:
+  push:
+    branches:
+      - 'deploy/staging'
+      - 'deploy/production'
+    paths:
+      - 'src/**'
+      - 'pom.xml'
+      - 'Dockerfile'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read   # migration-guard looks up the last successful production run
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------
+  # Determine environment from branch
+  # ---------------------------------------------------------------
+  setup:
+    name: Resolve Environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.resolve.outputs.environment }}
+      env_tag: ${{ steps.resolve.outputs.env_tag }}
+    steps:
+      - name: Resolve target environment
+        id: resolve
+        run: |
+          if [[ "${{ github.ref_name }}" == "deploy/production" ]]; then
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+            echo "env_tag=production" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref_name }}" == "deploy/staging" ]]; then
+            echo "environment=staging" >> "$GITHUB_OUTPUT"
+            echo "env_tag=staging" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=staging" >> "$GITHUB_OUTPUT"
+            echo "env_tag=staging" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------
+  # Production only: block migrations the prod DB would reject
+  # (out-of-order versions, edited or renamed shipped migrations)
+  # ---------------------------------------------------------------
+  migration-guard:
+    name: Validate DB Migrations (production)
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.environment == 'production'
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve last successful production deploy
+        id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          BASE=$(gh run list --repo "${{ github.repository }}" --workflow deploy.yml \
+            --branch deploy/production --status success --limit 1 \
+            --json headSha --jq '.[0].headSha // empty' || true)
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            BASE="$BEFORE_SHA"
+            if [ -z "$BASE" ] || [[ "$BASE" =~ ^0+$ ]] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+              BASE=$(git rev-parse HEAD^1)
+            fi
+          fi
+          echo "sha=$BASE" >> "$GITHUB_OUTPUT"
+
+      - name: Check migration order against production
+        run: bash .github/scripts/check-migration-order.sh "${{ steps.base.outputs.sha }}" HEAD
+
+  # ---------------------------------------------------------------
+  # Build Docker image and push to Docker Hub
+  # ---------------------------------------------------------------
+  build-and-push:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    needs: [setup, migration-guard]
+    # migration-guard is skipped for staging; it must pass for production
+    if: >-
+      always() && needs.setup.result == 'success' &&
+      (needs.migration-guard.result == 'success' || needs.migration-guard.result == 'skipped')
+    timeout-minutes: 45
+    environment: ${{ needs.setup.outputs.environment }}
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        id: docker-login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+        continue-on-error: true
+
+      - name: Check Docker login result
+        if: steps.docker-login.outcome == 'failure'
+        run: |
+          echo "Docker login failed!"
+          echo ""
+          echo "Common issues:"
+          echo "1. DOCKER_PASSWORD must be an ACCESS TOKEN (not your password)"
+          echo "   -> Create at: https://hub.docker.com/settings/security"
+          echo "   -> Token format: dckr_pat_xxxxx"
+          echo ""
+          echo "2. Check if token has expired"
+          echo "3. Verify token has Read, Write, Delete permissions"
+          echo "4. Verify DOCKER_USERNAME matches your Docker Hub username"
+          exit 1
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/rtt-api
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.setup.outputs.env_tag }}
+            type=sha,prefix=${{ needs.setup.outputs.env_tag }}-
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_ENV=${{ needs.setup.outputs.env_tag }}
+            APP_VERSION=${{ github.sha }}
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rtt-api:buildcache-${{ needs.setup.outputs.env_tag }}
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rtt-api:buildcache-${{ needs.setup.outputs.env_tag }},mode=max
+          provenance: false
+
+      - name: Verify image was pushed
+        run: |
+          echo "RTT API image built and pushed successfully"
+          echo "Tags: ${{ steps.meta.outputs.tags }}"
+
+  # ---------------------------------------------------------------
+  # Sync env vars to Render and trigger redeployment
+  # ---------------------------------------------------------------
+  deploy:
+    name: Trigger Render Deploy
+    runs-on: ubuntu-latest
+    needs: [setup, build-and-push]
+    timeout-minutes: 15
+    environment: ${{ needs.setup.outputs.environment }}
+
+    steps:
+      - name: Resolve Render service ID and deploy hook
+        id: render
+        run: |
+          if [[ "${{ needs.setup.outputs.env_tag }}" == "production" ]]; then
+            echo "service_id=${{ secrets.RENDER_SERVICE_ID_PRODUCTION }}" >> "$GITHUB_OUTPUT"
+            echo "deploy_hook=${{ secrets.RENDER_DEPLOY_HOOK_PRODUCTION }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "service_id=${{ secrets.RENDER_SERVICE_ID_STAGING }}" >> "$GITHUB_OUTPUT"
+            echo "deploy_hook=${{ secrets.RENDER_DEPLOY_HOOK_STAGING }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync env vars to Render
+        run: |
+          SERVICE_ID="${{ steps.render.outputs.service_id }}"
+
+          PAYLOAD=$(python3 - <<'PYEOF'
+          import json
+          envs = [
+              {"key": "PORT",                        "value": "8080"},
+              {"key": "SPRING_DATASOURCE_URL",       "value": "${{ secrets.SPRING_DATASOURCE_URL }}"},
+              {"key": "SPRING_DATASOURCE_USERNAME",  "value": "${{ secrets.SPRING_DATASOURCE_USERNAME }}"},
+              {"key": "SPRING_DATASOURCE_PASSWORD",  "value": "${{ secrets.SPRING_DATASOURCE_PASSWORD }}"},
+              {"key": "JWT_ACCESS_SECRET",           "value": "${{ secrets.JWT_ACCESS_SECRET }}"},
+              {"key": "JWT_REFRESH_SECRET",          "value": "${{ secrets.JWT_REFRESH_SECRET }}"},
+              {"key": "ADMIN_EMAIL",                 "value": "${{ secrets.ADMIN_EMAIL }}"},
+              {"key": "ADMIN_PASSWORD",              "value": "${{ secrets.ADMIN_PASSWORD }}"},
+              {"key": "DEMO_EMAIL",                  "value": "${{ vars.DEMO_EMAIL }}"},
+              {"key": "DEMO_PASSWORD",               "value": "${{ secrets.DEMO_PASSWORD }}"},
+              {"key": "DEMO_CRED_TTL_HOURS",         "value": "${{ vars.DEMO_CRED_TTL_HOURS }}"},
+              {"key": "SUPPORT_EMAIL",               "value": "${{ vars.SUPPORT_EMAIL }}"},
+              {"key": "ENGINE",                      "value": "${{ vars.ENGINE }}"},
+              {"key": "GEMINI_API_KEY",              "value": "${{ secrets.GEMINI_API_KEY }}"},
+              {"key": "GEMINI_MODEL",                "value": "${{ vars.GEMINI_MODEL }}"},
+              {"key": "PUSH",                        "value": "${{ vars.PUSH }}"},
+              {"key": "FIREBASE_CREDENTIALS",        "value": "${{ secrets.FIREBASE_CREDENTIALS }}"},
+              {"key": "SEED_ACCOUNTS",               "value": "${{ vars.SEED_ACCOUNTS }}"},
+              {"key": "SEED_ON_STARTUP",             "value": "${{ vars.SEED_ON_STARTUP }}"},
+              {"key": "CORS_ALLOWED_ORIGINS",        "value": "${{ vars.CORS_ALLOWED_ORIGINS }}"},
+              {"key": "CORS_ALLOWED_METHODS",        "value": "${{ vars.CORS_ALLOWED_METHODS }}"},
+              {"key": "GOOGLE_SHEETS_WEBHOOK_URL",   "value": "${{ secrets.GOOGLE_SHEETS_WEBHOOK_URL }}"},
+          ]
+          print(json.dumps(envs))
+          PYEOF
+          )
+
+          HTTP_STATUS=$(curl --silent --show-error --output /tmp/render_env_response.txt --write-out "%{http_code}" \
+            --request PUT \
+            --url "https://api.render.com/v1/services/$SERVICE_ID/env-vars" \
+            --header "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            --header "Content-Type: application/json" \
+            --data "$PAYLOAD" \
+            --connect-timeout 10 \
+            --max-time 30)
+
+          echo "Env sync HTTP Status: $HTTP_STATUS"
+          cat /tmp/render_env_response.txt
+          echo ""
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "RTT API env vars synced to Render."
+          else
+            echo "Failed to sync RTT API env vars (HTTP $HTTP_STATUS)"
+            exit 1
+          fi
+
+      - name: Trigger Render deploy hook
+        run: |
+          HTTP_STATUS=$(curl --silent --show-error --output /tmp/render_deploy_response.txt --write-out "%{http_code}" \
+            --request POST \
+            --url "${{ steps.render.outputs.deploy_hook }}" \
+            --connect-timeout 10 \
+            --max-time 30)
+
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "Response:"
+          cat /tmp/render_deploy_response.txt
+          echo ""
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "Render deployment triggered for ${{ needs.setup.outputs.env_tag }}."
+          else
+            echo "Render deploy hook failed with HTTP $HTTP_STATUS"
+            exit 1
+          fi
+
+      # A 2xx from the deploy hook only means "queued". Poll until live,
+      # then confirm the app actually booted (a Flyway failure crash-loops it).
+      - name: Wait for Render deployment
+        run: |
+          SERVICE_ID="${{ steps.render.outputs.service_id }}"
+
+          DEPLOY_ID=$(python3 -c "
+          import json
+          try:
+              data = json.load(open('/tmp/render_deploy_response.txt'))
+              print(data.get('id', ''))
+          except:
+              print('')
+          " 2>/dev/null || true)
+
+          if [ -z "$DEPLOY_ID" ]; then
+            echo "::warning::No deploy ID in response; sleeping 90s then skipping status polling."
+            sleep 90
+            exit 0
+          fi
+
+          for i in $(seq 1 60); do
+            STATUS=$(curl -s --max-time 15 \
+              --header "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+              "https://api.render.com/v1/services/$SERVICE_ID/deploys/$DEPLOY_ID" \
+              | python3 -c "import json,sys; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || true)
+            echo "[$i] Render deploy $DEPLOY_ID: ${STATUS:-unknown}"
+            case "$STATUS" in
+              live)                                               exit 0 ;;
+              deactivated|build_failed|update_failed|canceled)   echo "::error::Render deployment $STATUS"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::Timed out waiting for Render deployment"
+          exit 1
+
+      - name: Verify application health
+        env:
+          HEALTHCHECK_URL: ${{ vars.HEALTHCHECK_URL }}
+        run: |
+          if [ -z "$HEALTHCHECK_URL" ]; then
+            case "${{ needs.setup.outputs.env_tag }}" in
+              production) HEALTHCHECK_URL="https://rtt-api.onrender.com/healthz" ;;
+              *)          HEALTHCHECK_URL="https://rtt-api-staging.onrender.com/healthz" ;;
+            esac
+          fi
+
+          # Spring Boot + Flyway needs ~30-60s after the container starts
+          for i in $(seq 1 18); do
+            CODE=$(curl -s -o /tmp/health.txt -w "%{http_code}" --max-time 10 "$HEALTHCHECK_URL" || true)
+            echo "[$i] $HEALTHCHECK_URL -> $CODE $(cat /tmp/health.txt 2>/dev/null)"
+            [ "$CODE" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "::error::App is not healthy after deploy. Check Render service logs (Flyway / startup errors)."
+          exit 1
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo ""
+          echo "================================"
+          echo " Deployment Complete"
+          echo "================================"
+          echo " Environment : ${{ needs.setup.outputs.env_tag }}"
+          echo " Image       : ${{ secrets.DOCKER_USERNAME }}/rtt-api:${{ needs.setup.outputs.env_tag }}"
+          echo " Commit SHA  : ${{ github.sha }}"
+          if [ -n "${{ vars.APP_URL }}" ]; then
+            echo " URL         : ${{ vars.APP_URL }}"
+          fi
+          echo "================================"
+

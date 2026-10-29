@@ -1,0 +1,57 @@
+name: RTT-api CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Grant execute permission for mvnw
+        run: chmod +x mvnw
+
+      - name: Compile and verify dependencies
+        run: ./mvnw -B test-compile
+
+      - name: Run automated test suite
+        run: ./mvnw -B test
+
+      - name: Upload OpenAPI Spec Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec
+          path: target/openapi.json
+          if-no-files-found: warn
+
+      - name: Verify Docker build
+        run: docker build -t rtt-api:ci .
+
+      - name: Secret Scan (Grep for leaked keys or unhashed credentials)
+        run: |
+          echo "Scanning tracked files for accidentally committed secrets..."
+          # Fail if ADMIN_PASSWORD literal appears in tracked code
+          if git grep -I -i "bunny@123" -- ':!Docs/*' ':!*.template' ':!*.example'; then
+            echo "ERROR: Found admin password literal in tracked files!"
+            exit 1
+          fi
+          # Fail if Google API key prefix appears
+          if git grep -E "AIzaSy[A-Za-z0-9_-]{33}" -- ':!*.test.*' ':!*Test.java'; then
+            echo "ERROR: Found Google API key pattern in tracked files!"
+            exit 1
+          fi
+          echo "Secret scan passed cleanly."

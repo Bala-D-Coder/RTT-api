@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: rtt-api-test
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    clean-disabled: true
+    locations: "classpath:db/migration"
+  datasource:
+    url: jdbc:postgresql://localhost:5433/rtt_test
+    username: rtt_test
+    password: rtt_test
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+
+app:
+  jwt:
+    access-secret: test-access-secret-minimum-256-bits-length-string-for-jwt-signing
+    refresh-secret: test-refresh-secret-minimum-256-bits-length-string-for-jwt-signing
+    access-ttl-minutes: 15
+    refresh-ttl-days: 14
+  admin:
+    email: admin@apex.in
+    password: testAdminPassword123!
+  demo:
+    email: demo@apex.in
+    password: testDemoPassword123!
+    cred-ttl-hours: 24
+  support-email: support@apex.in
+  gemini:
+    api-key: ""
+  whisper:
+    url: http://127.0.0.1:8001
+  engine: mock
+  push: noop
+  seed-on-startup: false
+  seed-accounts: false
+  cors:
+    allowed-origins: http://localhost:5173,http://127.0.0.1:5173
+    allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS

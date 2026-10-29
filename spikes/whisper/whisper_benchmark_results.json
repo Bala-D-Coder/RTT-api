@@ -1,0 +1,71 @@
+{
+  "metadata": {
+    "device": "cpu",
+    "cpu_threads": 8,
+    "compute_type": "int8",
+    "audio_duration_sec": 33.312
+  },
+  "models": {
+    "base_beam1": {
+      "load_time_sec": 1.36,
+      "transcribe_time_sec": 2.18,
+      "rtf": 0.0654,
+      "rtf_pass": true,
+      "detected_language": "hi",
+      "language_prob": 0.973,
+      "transcript": "Aaj ki meeting me deployment plan discuss karenge aur owner asaain karenge friday tath Staging environment pe load test run karna hai Sabhi critical bug fixes verify karni hai aur client demo bilkul ready rakna hai Architecture review kalsubah 9a mteen lead ke saaths ke duld hai Please make sure documentation update ho gaa ho and api contracts sign off ho chukhe hai"
+    },
+    "base_beam5": {
+      "load_time_sec": 1.36,
+      "transcribe_time_sec": 2.2,
+      "rtf": 0.0662,
+      "rtf_pass": true,
+      "detected_language": "hi",
+      "language_prob": 0.973,
+      "transcript": "Aaj ki meeting me deployment plan discuss karengi aur owner assain karengi friday tath. Staging environment pe load test run karna hai. Sabhi critical bug fixes verify karni hai aur client demo bilkul ready rakhna hai. Architecture review kalsubah 9am teen lead ke saaths ke duld hai. Please make sure documentation update ho gaya ho and api contracts sign off ho chukhe hai."
+    },
+    "small_beam1": {
+      "load_time_sec": 1.46,
+      "transcribe_time_sec": 11.03,
+      "rtf": 0.3311,
+      "rtf_pass": true,
+      "detected_language": "hi",
+      "language_prob": 0.99,
+      "transcript": "आज की मीटिंग में दिप्लोयमेंट प्लान दिसकस करेंगे और औनर असाँईं करेंगे फ्राइदे तक. अगर दिएजिन एंवाड़मेंट पे लोड तेस्ट रून करना है, सबही क्रितिकल बग फिक्सेस वेरिफाई करने है, अर्क्लाइंट देमो बिलकुल रेडी रखना है, अर्कितेक्चर रिव्खल सुभाह नाइन आएं भी लीड के साथ सकेडूलद है, प्लीज नेख शोर डोक्युमेंट आप डेट हो गया हो, अगर अप आप आप आप आप आप आप हो चुके है."
+    },
+    "small_beam5": {
+      "load_time_sec": 1.46,
+      "transcribe_time_sec": 45.3,
+      "rtf": 1.36,
+      "rtf_pass": false,
+      "detected_language": "hi",
+      "language_prob": 0.99,
+      "transcript": "आज की मीटिंग में दिप्लोयमेंट प्लाईन दिसकस करेंगे और औनर असाँन करेंगे फ्राइदे तक. अच्टेजिंग एंवाय्रन मेंट पे लोड तेस्ट रन करना है, सभी क्रितिकल बग फिक्सेस वेरिफाई करने है, अर्क्लाइन्ट देमो बिल्कुल रेडी रखना है, अर्कितेक्ट्चर रिविकल सुभाह नाइन आएं टीन लीड के साथ सकेडूलड है, प्लीज मेख शोर डोक्युमेंटेशन अप्टेट हो गया हो, अर्कितेक्ट्चर रखना है,"
+    }
+  },
+  "language_modes": {
+    "auto": {
+      "time_sec": 1.86,
+      "transcript": "Aaj ki meeting me deployment plan discuss karenge aur owner asaain karenge friday tath Staging environment pe load test run karna hai Sabhi critical bug fixes verify karni hai aur client demo bilkul ready rakna hai Architecture review kalsubah 9a mteen lead ke saaths ke duld hai Please make sure documentation update ho gaa ho and api contracts sign off ho chukhe hai"
+    },
+    "hi": {
+      "time_sec": 1.38,
+      "transcript": "Aaj ki meeting me deployment plan discuss karenge aur owner asaain karenge friday tath Staging environment pe load test run karna hai Sabhi critical bug fixes verify karni hai aur client demo bilkul ready rakna hai Architecture review kalsubah 9a mteen lead ke saaths ke duld hai Please make sure documentation update ho gaa ho and api contracts sign off ho chukhe hai"
+    },
+    "en": {
+      "time_sec": 1.31,
+      "transcript": "Today's meeting will discuss the deployment plan and will assign the owner to Friday. The road to the staging environment is to run the test. All the critical bugs are to verify and the client is ready to be demobled. The architecture review is scheduled for 9 a.m. to the early morning. Please make sure documentation is updated and the API contracts sign off."
+    }
+  },
+  "prompt_conditioning": {
+    "prompt": "Meeting notes, deployment plan, staging server pe test, review kal subah.",
+    "time_sec": 1.73,
+    "transcript": "Today's meeting will discuss deployment plan and will assign owner to Friday. Staging environment pe load test run is necessary. All critical bug fixes are necessary to verify. And client demo is ready to be completed. Architecture review kal subah 9aMTN lead is scheduled with 9aMT. Please make sure documentation update is available and API contracts sign off."
+  },
+  "silence_noise_rejection": {
+    "num_segments": 0,
+    "segments": [],
+    "recommended_no_speech_threshold": 0.6,
+    "recommended_logprob_threshold": -1.0
+  }
+}
